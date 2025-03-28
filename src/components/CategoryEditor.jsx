@@ -313,9 +313,10 @@ const CategoryEditor = () => {
                         width: '16px', 
                         height: '16px',
                         marginRight: '5px',
-                        backgroundImage: `url(chrome://favicon/${bookmark.url})`,
+                        backgroundImage: bookmark.url ? `url(https://www.google.com/s2/favicons?domain=${new URL(bookmark.url).hostname})` : 'none',
                         backgroundSize: 'contain',
-                        backgroundRepeat: 'no-repeat'
+                        backgroundRepeat: 'no-repeat',
+                        borderRadius: '2px'
                       }}></span>
                       <span style={{ 
                         overflow: 'hidden', 

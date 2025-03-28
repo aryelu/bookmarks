@@ -19,8 +19,14 @@ export default defineConfig(({ command, mode }) => {
       outDir: 'dist',
       rollupOptions: {
         input: {
-          main: isExtensionBuild ? 'index.html' : resolve(__dirname, 'dev.html'),
+          main: isExtensionBuild ? resolve(__dirname, 'index.html') : resolve(__dirname, 'dev.html'),
+          background: isExtensionBuild ? resolve(__dirname, 'background.js') : undefined,
         },
+        output: {
+          entryFileNames: '[name].js',
+          chunkFileNames: '[name].js',
+          assetFileNames: '[name].[ext]'
+        }
       },
     },
     

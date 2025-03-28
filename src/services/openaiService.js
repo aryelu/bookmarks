@@ -1,25 +1,34 @@
 // OpenAI API integration
 
+// Generate a unique ID
+function generateUniqueId() {
+  return 'bm_' + Math.random().toString(36).substr(2, 9);
+}
+
 export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, apiKey, model = "gpt-3.5-turbo-16k", temperature = 0.7) => {
   if (!apiKey) {
     throw new Error('OpenAI API key is required');
   }
   
   try {
-    // Prepare bookmarks data for OpenAI with preserved structure
-    const bookmarksData = prepareBookmarksForAPI(bookmarks);
+    // Prepare bookmarks data for OpenAI with IDs assigned
+    const { bookmarksWithIds, idMap, pathIdMap, domainMap } = prepareBookmarksWithIds(bookmarks);
     
-    // For large sets we'll use chunking instead of limiting
-    let processedBookmarks = bookmarksData;
-    const isLargeSet = countBookmarksInTree(bookmarksData) > 100;
+    // Count total bookmarks
+    const totalBookmarks = Object.keys(idMap).length;
     
-    // We only need to check the size here, actual chunking is done in processLargeBookmarkCollection
+    if (totalBookmarks === 0) {
+      throw new Error("No bookmarks were found to organize. Please check your bookmark data structure and try again.");
+    }
+    
+    // Check if this is a large set
+    const isLargeSet = totalBookmarks > 100;
     if (isLargeSet) {
       console.log(`Large bookmark set detected - this will be processed in chunks if batch processing is enabled`);
     }
     
     // Construct the prompt based on organization type
-    const prompt = constructPrompt(processedBookmarks, organizationType);
+    const prompt = constructPrompt(bookmarksWithIds, organizationType, totalBookmarks, pathIdMap, domainMap);
     
     // Map model name to proper API model identifier if needed
     const apiModel = mapModelName(model);
@@ -33,7 +42,7 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
       messages: [
         {
           role: "system",
-          content: "You are a bookmark organization assistant. Your task is to categorize bookmarks into a logical folder structure. You must include ALL bookmarks provided without skipping any. The response must be a valid JSON object."
+          content: "You are a bookmark organization assistant. Your task is to categorize bookmarks into logical categories. Your response should be in CSV format with two columns: bookmark_id,category_path - no header row needed."
         },
         {
           role: "user",
@@ -41,8 +50,7 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
         }
       ],
       temperature: temperature,
-      response_format: { type: "json_object" },
-      max_tokens: getMaxTokensForModel(apiModel)  // Request appropriate response size based on model
+      max_tokens: getMaxTokensForModel(apiModel)
     };
     
     // Log the request configuration without the full prompt
@@ -89,17 +97,39 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
     // Parse the AI response into a bookmark structure
     let parsedResponse;
     try {
-      parsedResponse = parseOpenAIResponse(data.choices[0].message.content);
+      // Get the category assignments from the API response
+      const csvResponse = data.choices[0].message.content.trim();
+      const categoryAssignments = {};
+      
+      // Parse CSV response into an object
+      csvResponse.split('\n').forEach(line => {
+        if (!line.trim()) return; // Skip empty lines
+        
+        // Find the first comma which separates ID from category path
+        const firstCommaIndex = line.indexOf(',');
+        if (firstCommaIndex > 0) {
+          const id = line.substring(0, firstCommaIndex).trim();
+          const categoryPath = line.substring(firstCommaIndex + 1).trim();
+          
+          if (id && categoryPath) {
+            categoryAssignments[id] = categoryPath;
+          }
+        }
+      });
+      
+      console.log("Category assignments received:", Object.keys(categoryAssignments).length);
+      
+      // Convert category assignments to a bookmark structure
+      parsedResponse = buildBookmarkStructure(categoryAssignments, idMap);
       
       // Validate that all bookmarks are included in the response
-      const originalCount = countBookmarksInTree(bookmarks);
       const responseCount = countBookmarksInTree(parsedResponse);
       
-      console.log(`Original bookmark count: ${originalCount}, Response bookmark count: ${responseCount}`);
+      console.log(`Original bookmark count: ${totalBookmarks}, Response bookmark count: ${responseCount}`);
       
       // If we're missing a significant number of bookmarks, warn about it
-      if (responseCount < originalCount * 0.95) { // Allow for 5% margin of error
-        console.warn(`Warning: Response contains ${responseCount} bookmarks, but original had ${originalCount}. Some bookmarks may be missing.`);
+      if (responseCount < totalBookmarks * 0.95) { // Allow for 5% margin of error
+        console.warn(`Warning: Response contains ${responseCount} bookmarks, but original had ${totalBookmarks}. Some bookmarks may be missing.`);
       }
     } catch (parseError) {
       console.error('Error parsing OpenAI response:', parseError);
@@ -122,6 +152,307 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
     throw new Error(`Failed to organize bookmarks: ${error.message}`);
   }
 };
+
+// Prepare bookmarks data for the OpenAI API, assigning IDs to each bookmark
+function prepareBookmarksWithIds(bookmarks) {
+  // A flat list of bookmarks with IDs
+  const bookmarksWithIds = [];
+  // A map of ID to original bookmark information
+  const idMap = {};
+  // Map of folder paths to unique IDs
+  const pathIdMap = {};
+  // Counter for generating path IDs
+  let pathIdCounter = 1;
+  // Map of domains to unique IDs
+  const domainMap = {};
+  // Counter for domain IDs
+  let domainIdCounter = 1;
+  
+  // Generate a compact path ID
+  function getPathId(path) {
+    if (!path) return '';
+    if (!pathIdMap[path]) {
+      pathIdMap[path] = 'p' + pathIdCounter++;
+    }
+    return pathIdMap[path];
+  }
+  
+  // Get or create domain ID
+  function getDomainId(url) {
+    try {
+      const domain = new URL(url).hostname;
+      if (!domainMap[domain]) {
+        domainMap[domain] = 'd' + domainIdCounter++;
+      }
+      return { id: domainMap[domain], domain };
+    } catch (e) {
+      return { id: 'd0', domain: 'unknown' };
+    }
+  }
+  
+  // Process the bookmark tree and assign IDs
+  function traverseAndAssignIds(node, path = '') {
+    // If it's a bookmark
+    if (node.url) {
+      // Generate a unique ID
+      const id = generateUniqueId();
+      
+      // Get compact path ID
+      const pathId = getPathId(path);
+      
+      // Get domain ID
+      const { id: domainId, domain } = getDomainId(node.url);
+      
+      // Add to the flat list
+      bookmarksWithIds.push({
+        id: id,
+        title: node.title || "Untitled Bookmark",
+        url: node.url,
+        pathId: pathId,
+        domainId: domainId,
+        domain: domain
+      });
+      
+      // Store in the ID map with the original node data
+      idMap[id] = {
+        title: node.title || "Untitled Bookmark",
+        url: node.url,
+        type: 'bookmark'
+      };
+    } 
+    // If it's a folder
+    else if (node.children && node.children.length > 0) {
+      const newPath = path ? `${path} > ${node.title || "Unnamed Folder"}` : (node.title || "Root");
+      
+      // Process each child
+      node.children.forEach(child => traverseAndAssignIds(child, newPath));
+    }
+  }
+  
+  // Start processing from the root or from the node itself
+  if (bookmarks.children) {
+    // Root node with children
+    const rootPath = bookmarks.title || "Root";
+    bookmarks.children.forEach(child => traverseAndAssignIds(child, rootPath));
+  } else {
+    // Single node
+    traverseAndAssignIds(bookmarks);
+  }
+  
+  console.log(`Processed ${bookmarksWithIds.length} bookmarks with unique IDs and ${Object.keys(domainMap).length} unique domains`);
+  
+  return { bookmarksWithIds, idMap, pathIdMap, domainMap };
+}
+
+// Construct a prompt for ID-based organization
+function constructPrompt(bookmarksWithIds, organizationType, totalBookmarks, pathIdMap, domainMap) {
+  let instructions = '';
+  
+  switch (organizationType) {
+    case 'category':
+      instructions = `You are a bookmark organization assistant. Your task is to categorize bookmarks into a logical, general-purpose folder structure that reflects their purpose and content.
+
+When analyzing each bookmark:
+1. Examine the URL and domain to understand the website's actual content and purpose
+2. Consider the existing hierarchical structure (path) as a clue to how the user previously organized it
+3. Evaluate the title to extract meaningful keywords
+
+Organize bookmarks into meaningful, broad-purpose categories (with subfolders if needed). Group similar sites together, even if they came from different paths.
+
+Example categories could include:
+- Productivity & Planning
+- Finance & Investing
+- Learning & Study
+- Art & Creativity
+- Development & Programming
+- Career & Interviews
+- Crypto & Blockchain
+- Shopping & Tools
+- Kids & Education
+- Entertainment & Media
+- Personal & Admin
+
+You may use subfolders if they improve clarity (e.g. "Art & Creativity/Videos" or "Crypto & Blockchain/NFT").`;
+      break;
+
+    case 'alphabetical':
+      instructions = `Please organize these bookmarks alphabetically, grouping them by the first letter of their title. Create a separate folder for each letter and place non-alphabetic titles in a "#" folder.
+
+Example categories would be:
+- A
+- B
+- C
+etc.
+
+You can create subfolders for further organization if there are many bookmarks starting with the same letter.`;
+      break;
+
+    case 'domain':
+      instructions = `Based on the domains in the URLs, organize these bookmarks by website or service type. 
+
+Create meaningful category names based on the service type (e.g., "Google Services", "Social Media", "News Sites") and group bookmarks from the same domain together.`;
+      break;
+
+    default:
+      instructions = `Please organize these bookmarks into a logical folder structure. Use the URLs, titles, and existing paths to inform your categorization.`;
+  }
+
+  console.log(`Constructing prompt for ${totalBookmarks} bookmarks with organization type: ${organizationType}`);
+
+  // Convert bookmarks to CSV format
+  let csvData = "id,title,domainId,pathId\n";
+  bookmarksWithIds.forEach(bookmark => {
+    // Escape any commas in the fields
+    const safeTitle = bookmark.title.replace(/,/g, "\\,").replace(/"/g, '""');
+    csvData += `${bookmark.id},"${safeTitle}",${bookmark.domainId},${bookmark.pathId}\n`;
+  });
+
+  // Create path mapping as CSV
+  let pathMapData = "pathId,fullPath\n";
+  Object.entries(pathIdMap).forEach(([path, id]) => {
+    const safePath = path.replace(/,/g, "\\,").replace(/"/g, '""');
+    pathMapData += `${id},"${safePath}"\n`;
+  });
+  
+  // Create domain mapping as CSV
+  let domainMapData = "domainId,domain\n";
+  Object.entries(domainMap).forEach(([domain, id]) => {
+    domainMapData += `${id},${domain}\n`;
+  });
+
+  return `${instructions}
+
+I have ${totalBookmarks} bookmarks that I need organized. Each bookmark has a unique ID and information in CSV format:
+
+${csvData}
+
+The pathId in the data above refers to the original folder path, according to this mapping:
+
+${pathMapData}
+
+The domainId refers to the website domain, according to this mapping:
+
+${domainMapData}
+
+Please analyze the domains and titles to determine appropriate categories. When generating your response:
+1. Create meaningful category names for different types of bookmarks
+2. Use "/" to indicate hierarchy (e.g., "Development/JavaScript")
+3. Provide your response as a CSV with two columns: bookmark_id,category_path (no header row)
+4. Consider the original path information when deciding categories
+
+Example response format:
+bm_123abc,Development/JavaScript
+bm_456def,Finance/Investing
+bm_789ghi,Entertainment/Movies
+
+Guidelines:
+1. Assign EVERY bookmark to a category - don't skip any bookmark IDs
+2. Use descriptive category names that reflect the content
+3. Create 5-15 top-level categories with appropriate subcategories where needed
+4. Analyze both the domain and existing path to derive context
+5. Group similar bookmarks together even if they came from different paths
+6. If you're unsure about a bookmark's category, place it in an "Unknown" folder that I can organize later`;
+}
+
+// Convert category assignments to a bookmark structure
+function buildBookmarkStructure(categoryAssignments, idMap) {
+  // Create the root folder
+  const rootStructure = {
+    type: 'folder',
+    title: 'Bookmarks Bar',
+    children: []
+  };
+  
+  // Map to hold folder references for quick access
+  const folderMap = {
+    '': rootStructure // Root reference
+  };
+  
+  // Process each bookmark by its ID and assigned category
+  Object.entries(categoryAssignments).forEach(([id, categoryPath]) => {
+    // Skip if the ID isn't in our map (shouldn't happen)
+    if (!idMap[id]) {
+      console.warn(`ID ${id} not found in the ID map`);
+      return;
+    }
+    
+    // Get the bookmark data
+    const bookmark = idMap[id];
+    
+    // Split the category path into parts
+    const pathParts = categoryPath.split('/').filter(part => part.trim());
+    
+    // Ensure there's at least one category
+    if (pathParts.length === 0) {
+      pathParts.push('Uncategorized');
+    }
+    
+    // Build or find the folder structure
+    let currentPath = '';
+    let currentFolder = rootStructure;
+    
+    // Create/navigate the folder hierarchy
+    for (let i = 0; i < pathParts.length; i++) {
+      const folderName = pathParts[i].trim();
+      
+      // Update the current path
+      currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+      
+      // Check if we already have this folder
+      if (!folderMap[currentPath]) {
+        // Create new folder
+        const newFolder = {
+          type: 'folder',
+          title: folderName,
+          children: []
+        };
+        
+        // Add to parent folder
+        currentFolder.children.push(newFolder);
+        
+        // Store reference
+        folderMap[currentPath] = newFolder;
+      }
+      
+      // Navigate to this folder for next iteration
+      currentFolder = folderMap[currentPath];
+    }
+    
+    // Finally, add the bookmark to the last folder
+    currentFolder.children.push({
+      type: 'bookmark',
+      title: bookmark.title,
+      url: bookmark.url
+    });
+  });
+  
+  // Sort folders and bookmarks alphabetically
+  function sortNodeChildren(node) {
+    if (node.children && node.children.length > 0) {
+      // Sort children - folders first, then bookmarks, both alphabetically
+      node.children.sort((a, b) => {
+        // First by type (folder then bookmark)
+        if (a.type !== b.type) {
+          return a.type === 'folder' ? -1 : 1;
+        }
+        // Then by title alphabetically
+        return a.title.localeCompare(b.title);
+      });
+      
+      // Sort children of folders recursively
+      node.children.forEach(child => {
+        if (child.type === 'folder') {
+          sortNodeChildren(child);
+        }
+      });
+    }
+  }
+  
+  // Sort all folders and bookmarks
+  sortNodeChildren(rootStructure);
+  
+  return rootStructure;
+}
 
 // Test if the API key is valid
 export const testApiKey = async (apiKey) => {
@@ -163,365 +494,338 @@ export const testApiKey = async (apiKey) => {
   }
 };
 
-// Prepare bookmarks data for the OpenAI API
-function prepareBookmarksForAPI(bookmarks) {
-  // Log the structure of bookmarks to debug
-  console.log("Input bookmarks structure:", JSON.stringify(bookmarks, null, 2).substring(0, 500) + "...");
+// Helper function to map UI model names to API model identifiers
+function mapModelName(modelName) {
+  // Map from UI display names to actual API identifiers if needed
+  const modelMapping = {
+    "GPT-3.5 (Basic, Faster)": "gpt-3.5-turbo",
+    "GPT-3.5 Turbo 16k (Recommended, Good Balance)": "gpt-3.5-turbo-16k",
+    "GPT-4 (High Quality, Slower, More Expensive)": "gpt-4",
+    "GPT-4 Turbo (Latest, Best Quality, Most Expensive)": "gpt-4-turbo"
+  };
   
-  // Create a simplified but hierarchical representation of bookmarks
-  function processNode(node, path = '') {
-    // Case 1: It's a bookmark (has URL)
-    if (node.url) {
-      // Extract domain from URL
-      let domain = '';
-      try {
-        const url = new URL(node.url);
-        domain = url.hostname;
-      } catch (e) {
-        domain = 'unknown';
-      }
-      
-      return {
-        title: node.title || "Untitled Bookmark",
-        url: node.url, // Include URL for better context
-        domain: domain,
-        type: 'bookmark',
-        path: path
-      };
-    } 
-    // Case 2: It's a folder (has children)
-    else if (node.children && node.children.length > 0) {
-      const newPath = path ? `${path} > ${node.title || "Unnamed Folder"}` : (node.title || "Root");
-      
-      return {
-        title: node.title || "Unnamed Folder",
-        type: 'folder',
-        path: path,
-        children: node.children.map(child => processNode(child, newPath))
-      };
-    }
-    // Case 3: Empty folder or unknown node type
-    else {
-      console.warn("Empty folder or unknown node structure:", node);
-      
-      return {
-        title: node.title || "Unknown Item",
-        type: node.children ? 'folder' : 'bookmark',
-        path: path,
-        children: []
-      };
-    }
-  }
-  
-  let processedData;
-  
-  // Process from the root
-  if (bookmarks.children) {
-    // Root with children - process each child
-    processedData = {
-      title: bookmarks.title || "Bookmarks Root",
-      type: "folder",
-      children: bookmarks.children.map(child => processNode(child))
-    };
+  return modelMapping[modelName] || modelName; // Use the mapping or return the original if not found
+}
+
+// Determine maximum tokens based on model
+function getMaxTokensForModel(model) {
+  if (model.includes('gpt-4')) {
+    return 4000; // Larger token limit for GPT-4 to prevent truncation
+  } else if (model.includes('16k')) {
+    return 3000; // GPT-3.5-16k with good limit
   } else {
-    // Single node or malformed structure
-    processedData = processNode(bookmarks);
+    return 2000; // Default limit for other models
   }
-  
-  console.log(`Processed bookmark structure with hierarchy preserved`);
-  
-  return processedData;
 }
 
-// Construct a prompt based on organization type
-function constructPrompt(bookmarks, organizationType) {
-  // Count total bookmarks for prompt
-  const totalBookmarks = countBookmarksInTree(bookmarks);
+// Helper function to count bookmarks in a tree structure
+function countBookmarksInTree(node) {
+  if (!node) return 0;
   
-  if (totalBookmarks === 0) {
-    console.error("No bookmarks to organize - empty structure received in constructPrompt");
-    throw new Error("No bookmarks were found to organize. Please check your bookmark data structure and try again.");
-  }
-
-  let instructions = '';
+  let count = 0;
   
-  switch (organizationType) {
-    case 'category':
-      instructions = `You are a bookmark organization assistant. Your task is to categorize bookmarks into a logical, general-purpose folder structure that reflects their purpose and content.
-
-When analyzing each bookmark:
-1. Examine the URL and domain to understand the website's actual content and purpose
-2. Consider the existing hierarchical structure (path) as a clue to how the user previously organized it
-3. Evaluate the title to extract meaningful keywords
-
-Organize bookmarks into meaningful, broad-purpose categories (with subfolders if needed). Group similar sites together, even if they came from different paths.
-
-Example categories could include:
-- Productivity & Planning
-- Finance & Investing
-- Learning & Study
-- Art & Creativity
-- Development & Programming
-- Career & Interviews
-- Crypto & Blockchain
-- Shopping & Tools
-- Kids & Education
-- Entertainment & Media
-- Personal & Admin
-
-You may use subfolders if they improve clarity (e.g. "Art & Creativity > Videos" or "Crypto & Blockchain > NFT").
-
-When organizing, create a logical hierarchy - for example, place all development-related sites under a "Development" folder with appropriate subfolders for languages or frameworks.
-
-Keep all bookmark titles and URLs intact, and don't skip any.`;
-      break;
-
-    case 'alphabetical':
-      instructions = `Please organize these bookmarks alphabetically, grouping them by the first letter of their title. Create a separate folder for each letter and place non-alphabetic titles in a "#" folder.
-
-While organizing:
-1. Preserve the original URLs and titles exactly
-2. Use the hierarchical structure (paths) to determine if any subfolders might be useful
-3. For bookmarks with similar titles, you may group them into meaningful subfolders`;
-      break;
-
-    case 'domain':
-      instructions = `Based on the domains in the URLs, organize these bookmarks by website or service type. 
-
-When organizing:
-1. Group bookmarks from the same domain together
-2. Create meaningful category names based on the service type (e.g., "Google Services", "Social Media", "News Sites")
-3. Use the existing hierarchical structure (paths) as a hint for how to group similar domains
-4. For domains with many bookmarks, create appropriate subfolders based on the URL paths or content types`;
-      break;
-
-    default:
-      instructions = `Please organize these bookmarks into a logical folder structure. Use the URLs, titles, and existing paths to inform your categorization.`;
+  if (node.url) {
+    // It's a bookmark
+    count = 1;
+  } else if (node.children) {
+    // It's a folder - count children recursively
+    count = node.children.reduce((sum, child) => sum + countBookmarksInTree(child), 0);
   }
-
-  console.log(`Constructing prompt for ${totalBookmarks} bookmarks with organization type: ${organizationType}`);
-
-  return `${instructions}
-
-I have ${totalBookmarks} bookmarks that I need organized. Here's the complete bookmark structure with hierarchy preserved:
-
-${JSON.stringify(bookmarks, null, 2)}
-
-Please provide a JSON response with the following structure, including EVERY SINGLE BOOKMARK from my input, without skipping any:
-{
-  "type": "folder",
-  "title": "Bookmarks Bar",
-  "children": [
-    {
-      "type": "folder",
-      "title": "Category Name",
-      "children": [
-        {
-          "type": "bookmark",
-          "title": "Original Bookmark Title",
-          "url": "Original URL"
-        }
-      ]
-    }
-  ]
-}
-
-Guidelines:
-1. Keep all original bookmark titles and URLs exactly as they appear - do not modify them
-2. CRITICALLY IMPORTANT: Include ALL ${totalBookmarks} bookmarks in your response - do not skip any bookmarks, do not summarize, do not filter
-3. Use descriptive category names that reflect the content
-4. Create 5-15 top-level folders with appropriate subfolders where they improve organization
-5. Analyze both the URL content and original folder path to derive context
-6. For sites with unclear titles, examine the domain and URL path to better categorize them
-7. Preserve any logical grouping from the original structure when it makes sense`;
-}
-
-
-// Parse the OpenAI response into a bookmark structure
-function parseOpenAIResponse(responseContent) {
-  try {
-    // Parse the JSON response
-    const parsedResponse = JSON.parse(responseContent);
-    
-    // Validate the structure
-    if (!parsedResponse.type || parsedResponse.type !== 'folder' ||
-        !parsedResponse.title || !Array.isArray(parsedResponse.children)) {
-      throw new Error('Invalid response format from OpenAI');
-    }
-    
-    return parsedResponse;
-  } catch (error) {
-    console.error('Error parsing OpenAI response:', error);
-    throw new Error(`Failed to parse AI response: ${error.message}`);
-  }
+  
+  return count;
 }
 
 // Handler for large bookmark collections
 export const processLargeBookmarkCollection = async (bookmarks, organizationType, apiKey, model = "gpt-3.5-turbo-16k", temperature = 0.7) => {
-  const allBookmarks = flattenBookmarks(bookmarks);
+  // Use the ID assignment function to get our bookmark with IDs
+  const { bookmarksWithIds, idMap, pathIdMap, domainMap } = prepareBookmarksWithIds(bookmarks);
   
-  // If the collection is small enough, process it normally
-  if (allBookmarks.length <= 200) {
+  // Skip batch processing if the collection is small enough
+  if (bookmarksWithIds.length <= 300) {
     return organizeBookmarksWithOpenAI(bookmarks, organizationType, apiKey, model, temperature);
   }
   
   // For large collections, split into smaller chunks to prevent token limits
-  const chunkSize = model.includes('gpt-4') ? 150 : 200; // Use smaller chunks for GPT-4 as it uses more tokens per bookmark
-  const chunks = chunkArray(allBookmarks, chunkSize);
-  console.log(`Processing ${allBookmarks.length} bookmarks in ${chunks.length} chunks using ${model}`);
+  const chunkSize = model.includes('gpt-4') ? 250 : 350;
+  const chunks = chunkArray(bookmarksWithIds, chunkSize);
+  console.log(`Processing ${bookmarksWithIds.length} bookmarks in ${chunks.length} chunks using ${model}`);
   
-  const organizedChunks = [];
+  // Store all category assignments
+  const allCategoryAssignments = {};
+  // Track categories we've seen so far
+  const existingCategories = new Set();
   let chunkIndex = 1;
   
   for (const chunk of chunks) {
     console.log(`Processing chunk ${chunkIndex} of ${chunks.length} (${chunk.length} bookmarks)...`);
     
-    // Create a temporary bookmark structure for this chunk
-    const chunkBookmarks = {
-      type: 'folder',
-      title: 'Temporary Chunk',
-      children: chunk.map(bookmark => ({
-        type: 'bookmark',
-        title: bookmark.title,
-        url: bookmark.url,
-        domain: bookmark.domain
-      }))
-    };
-    
-    // Process this chunk
     try {
-      const organizedChunk = await organizeBookmarksWithOpenAI(
-        chunkBookmarks, 
-        organizationType,
-        apiKey,
-        model,
-        temperature
-      );
+      // Construct the prompt for this chunk, including existing categories
+      const prompt = constructPromptWithCategories(chunk, organizationType, 
+                                                  chunk.length, 
+                                                  Array.from(existingCategories),
+                                                  pathIdMap,
+                                                  domainMap);
       
-      organizedChunks.push(organizedChunk);
-      console.log(`Successfully processed chunk ${chunkIndex}`);
+      // Map model name to proper API model identifier if needed
+      const apiModel = mapModelName(model);
+      
+      // Create the request body
+      const requestBody = {
+        model: apiModel,
+        messages: [
+          {
+            role: "system",
+            content: "You are a bookmark organization assistant. Your task is to categorize bookmarks into logical categories. Your response should be in CSV format with two columns: bookmark_id,category_path - no header row needed."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: temperature,
+        max_tokens: getMaxTokensForModel(apiModel)
+      };
+      
+      // Make OpenAI API request
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('OpenAI API error:', errorData);
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      }
+      
+      // Get response data
+      const data = await response.json();
+      console.log(`Chunk ${chunkIndex} response received`);
+      
+      // Parse the category assignments from this chunk
+      const csvResponse = data.choices[0].message.content.trim();
+      const categoryAssignments = {};
+      
+      // Parse CSV response into an object
+      csvResponse.split('\n').forEach(line => {
+        if (!line.trim()) return; // Skip empty lines
+        
+        // Find the first comma which separates ID from category path
+        const firstCommaIndex = line.indexOf(',');
+        if (firstCommaIndex > 0) {
+          const id = line.substring(0, firstCommaIndex).trim();
+          const categoryPath = line.substring(firstCommaIndex + 1).trim();
+          
+          if (id && categoryPath) {
+            categoryAssignments[id] = categoryPath;
+          }
+        }
+      });
+      
+      console.log(`Chunk ${chunkIndex} assignments: ${Object.keys(categoryAssignments).length}`);
+      
+      // Update existing categories with the ones from this chunk
+      Object.values(categoryAssignments).forEach(category => {
+        existingCategories.add(category);
+      });
+      
+      // Merge into the full assignments object
+      Object.assign(allCategoryAssignments, categoryAssignments);
+      
     } catch (error) {
       console.error(`Error processing chunk ${chunkIndex}:`, error);
       
       // If this chunk is still too large, split it further
-      if (chunk.length > 75 && error.message.includes('too large') || error.message.includes('max tokens')) {
+      if (chunk.length > 75 && (error.message.includes('too large') || error.message.includes('max tokens'))) {
         console.log(`Chunk ${chunkIndex} too large, splitting further...`);
         
-        const subChunks = chunkArray(chunk, chunk.length / 2);
-        for (const subChunk of subChunks) {
-          const subChunkBookmarks = {
-            type: 'folder',
-            title: 'Sub-Chunk',
-            children: subChunk.map(bookmark => ({
-              type: 'bookmark',
-              title: bookmark.title,
-              url: bookmark.url,
-              domain: bookmark.domain
-            }))
-          };
+        const subChunks = chunkArray(chunk, Math.ceil(chunk.length / 2));
+        for (let i = 0; i < subChunks.length; i++) {
+          const subChunk = subChunks[i];
+          console.log(`Processing sub-chunk ${i+1} of ${subChunks.length} (${subChunk.length} bookmarks)...`);
           
           try {
-            const organizedSubChunk = await organizeBookmarksWithOpenAI(
-              subChunkBookmarks,
-              organizationType,
-              apiKey,
-              model,
-              temperature
-            );
+            // Process this sub-chunk
+            const subPrompt = constructPromptWithCategories(subChunk, organizationType, subChunk.length, Array.from(existingCategories), pathIdMap, domainMap);
             
-            organizedChunks.push(organizedSubChunk);
+            // Map model name to proper API model identifier if needed
+            const apiModel = mapModelName(model);
+            
+            // Create the request body
+            const requestBody = {
+              model: apiModel,
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a bookmark organization assistant. Your task is to categorize bookmarks into logical categories. Your response should be in CSV format with two columns: bookmark_id,category_path - no header row needed."
+                },
+                {
+                  role: "user",
+                  content: subPrompt
+                }
+              ],
+              temperature: temperature,
+              max_tokens: getMaxTokensForModel(apiModel)
+            };
+            
+            // Make OpenAI API request
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+              throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+            }
+            
+            // Get response data
+            const data = await response.json();
+            
+            // Parse the category assignments from this sub-chunk
+            const csvResponse = data.choices[0].message.content.trim();
+            const subCategoryAssignments = {};
+            
+            // Parse CSV response into an object
+            csvResponse.split('\n').forEach(line => {
+              if (!line.trim()) return; // Skip empty lines
+              
+              // Find the first comma which separates ID from category path
+              const firstCommaIndex = line.indexOf(',');
+              if (firstCommaIndex > 0) {
+                const id = line.substring(0, firstCommaIndex).trim();
+                const categoryPath = line.substring(firstCommaIndex + 1).trim();
+                
+                if (id && categoryPath) {
+                  subCategoryAssignments[id] = categoryPath;
+                }
+              }
+            });
+            
+            console.log(`Sub-chunk ${i+1} assignments: ${Object.keys(subCategoryAssignments).length}`);
+            
+            // Merge into the full assignments object
+            Object.assign(allCategoryAssignments, subCategoryAssignments);
+            
           } catch (subError) {
             console.error('Error processing sub-chunk:', subError);
-            // Create a simple alphabetical organization for this chunk as fallback
-            organizedChunks.push(createAlphabeticalFallback(subChunk));
+            
+            // Fallback - assign each bookmark to a default category
+            subChunk.forEach(bookmark => {
+              allCategoryAssignments[bookmark.id] = "Uncategorized/Failed to Categorize";
+            });
           }
         }
       } else {
-        // Create a simple alphabetical organization for this chunk as fallback
-        organizedChunks.push(createAlphabeticalFallback(chunk));
+        // Fallback - assign each bookmark to a default category
+        chunk.forEach(bookmark => {
+          allCategoryAssignments[bookmark.id] = "Uncategorized/Failed to Categorize";
+        });
       }
     }
     
     chunkIndex++;
   }
   
-  // Merge the organized chunks
-  return mergeOrganizedChunks(organizedChunks);
+  console.log(`All chunks processed. Total assignments: ${Object.keys(allCategoryAssignments).length}`);
+  
+  // Build the final bookmark structure from all the category assignments
+  return buildBookmarkStructure(allCategoryAssignments, idMap);
 };
 
-// Create a simple alphabetical organization as fallback
-function createAlphabeticalFallback(bookmarks) {
-  // Group bookmarks by first letter
-  const groups = {};
+// Construct a prompt with existing categories for context
+function constructPromptWithCategories(bookmarksWithIds, organizationType, totalBookmarks, existingCategories, pathIdMap, domainMap) {
+  // Start with the standard instructions
+  let instructions = getOrganizationInstructions(organizationType);
   
-  bookmarks.forEach(bookmark => {
-    const firstLetter = (bookmark.title || "").charAt(0).toUpperCase();
-    const group = /[A-Z]/.test(firstLetter) ? firstLetter : '#';
-    
-    if (!groups[group]) {
-      groups[group] = [];
-    }
-    
-    groups[group].push({
-      type: 'bookmark',
-      title: bookmark.title,
-      url: bookmark.url
-    });
+  // Add context about existing categories if any
+  let categoryContext = "";
+  if (existingCategories.length > 0) {
+    categoryContext = `\nI've already organized some bookmarks into the following categories:\n\n${existingCategories.join('\n')}\n\nPlease use these existing categories when appropriate to maintain consistency, but you can also create new categories if needed.`;
+  }
+  
+  console.log(`Constructing prompt for ${totalBookmarks} bookmarks with ${existingCategories.length} existing categories`);
+
+  // Convert bookmarks to CSV format
+  let csvData = "id,title,domainId,pathId\n";
+  bookmarksWithIds.forEach(bookmark => {
+    // Escape any commas in the fields
+    const safeTitle = bookmark.title.replace(/,/g, "\\,").replace(/"/g, '""');
+    csvData += `${bookmark.id},"${safeTitle}",${bookmark.domainId},${bookmark.pathId}\n`;
   });
-  
-  // Create folders for each letter group
-  const children = [];
-  
-  Object.keys(groups).sort().forEach(letter => {
-    children.push({
-      type: 'folder',
-      title: `${letter}`,
-      children: groups[letter]
-    });
+
+  // Create path mapping as CSV
+  let pathMapData = "pathId,fullPath\n";
+  Object.entries(pathIdMap).forEach(([path, id]) => {
+    const safePath = path.replace(/,/g, "\\,").replace(/"/g, '""');
+    pathMapData += `${id},"${safePath}"\n`;
   });
-  
-  return {
-    type: 'folder',
-    title: 'Alphabetical (Fallback)',
-    children: children
-  };
+
+  // Create domain mapping as CSV
+  let domainMapData = "domainId,domain\n";
+  Object.entries(domainMap).forEach(([domain, id]) => {
+    domainMapData += `${id},${domain}\n`;
+  });
+
+  return `${instructions}${categoryContext}
+
+I have ${totalBookmarks} bookmarks that I need organized. Each bookmark has a unique ID and information in CSV format:
+
+${csvData}
+
+The pathId in the data above refers to the original folder path, according to this mapping:
+
+${pathMapData}
+
+The domainId refers to the website domain, according to this mapping:
+
+${domainMapData}
+
+Please analyze the domains and titles to determine appropriate categories. When generating your response:
+1. Create meaningful category names for different types of bookmarks
+2. Use "/" to indicate hierarchy (e.g., "Development/JavaScript")
+3. Provide your response as a CSV with two columns: bookmark_id,category_path (no header row)
+4. Reuse the existing categories listed above when applicable
+5. Consider the original path information when deciding categories
+
+Example response format:
+bm_123abc,Development/JavaScript
+bm_456def,Finance/Investing
+bm_789ghi,Entertainment/Movies
+
+Guidelines:
+1. Assign EVERY bookmark to a category - don't skip any bookmark IDs
+2. Use the existing categories listed above when appropriate
+3. Create new categories only when necessary
+4. Analyze both the domain and existing path to derive context
+5. Group similar bookmarks together
+6. If you're unsure about a bookmark's category, place it in an "Unknown" folder that I can organize later`;
 }
 
-// Helper function to flatten bookmark hierarchy while preserving more information
-function flattenBookmarks(bookmarks) {
-  const flatList = [];
-  
-  function traverse(node, path = '') {
-    if (node.url) {
-      // It's a bookmark
-      let domain = '';
-      try {
-        const url = new URL(node.url);
-        domain = url.hostname;
-      } catch (e) {
-        domain = 'unknown';
-      }
-      
-      flatList.push({
-        title: node.title || "Untitled",
-        url: node.url,
-        domain: domain,
-        path: path // Include the path for context
-      });
-    } else if (node.children) {
-      // It's a folder - process children
-      const newPath = path ? `${path} > ${node.title || "Unnamed Folder"}` : (node.title || "Root");
-      node.children.forEach(child => traverse(child, newPath));
-    }
+// Get organization instructions based on type
+function getOrganizationInstructions(organizationType) {
+  switch (organizationType) {
+    case 'category':
+      return `You are a bookmark organization assistant. Your task is to categorize bookmarks into a logical, general-purpose folder structure that reflects their purpose and content.
+
+When analyzing each bookmark:
+1. Examine the URL and domain to understand the website's actual content and purpose
+2. Consider the existing hierarchical structure (path) as a clue to how the user previously organized it
+3. Evaluate the title to extract meaningful keywords
+
+Organize bookmarks into meaningful, broad-purpose categories (with subfolders if needed). Group similar sites together, even if they came from different paths.`;
+    // ... other organization types ...
+    default:
+      return `Please organize these bookmarks into a logical folder structure. Use the URLs, titles, and existing paths to inform your categorization.`;
   }
-  
-  if (bookmarks.children) {
-    bookmarks.children.forEach(child => traverse(child, bookmarks.title || "Root"));
-  } else {
-    traverse(bookmarks);
-  }
-  
-  return flatList;
 }
 
 // Split array into chunks
@@ -531,76 +835,4 @@ function chunkArray(array, chunkSize) {
     chunks.push(array.slice(i, i + chunkSize));
   }
   return chunks;
-}
-
-// Merge organized chunks into a single structure
-function mergeOrganizedChunks(chunks) {
-  // Start with first chunk as base
-  const merged = chunks[0];
-  
-  // Track folders by name for easy access
-  const folderMap = {};
-  merged.children.forEach(folder => {
-    if (folder.type === 'folder') {
-      folderMap[folder.title] = folder;
-    }
-  });
-  
-  // Process remaining chunks
-  for (let i = 1; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    
-    chunk.children.forEach(folder => {
-      if (folder.type !== 'folder') return;
-      
-      if (folderMap[folder.title]) {
-        // Folder exists, add bookmarks to it
-        folderMap[folder.title].children.push(...folder.children);
-      } else {
-        // New folder, add to merged structure
-        merged.children.push(folder);
-        folderMap[folder.title] = folder;
-      }
-    });
-  }
-  
-  return merged;
-}
-
-// Helper function to map UI model names to API model identifiers
-function mapModelName(model) {
-  const modelMap = {
-    'gpt-3.5-turbo': 'gpt-3.5-turbo-0125',
-    'gpt-3.5-turbo-16k': 'gpt-3.5-turbo-0125',
-    'gpt-4': 'gpt-4-0125-preview',
-    'gpt-4-turbo': 'gpt-4-turbo-preview'
-  };
-  
-  return modelMap[model] || 'gpt-3.5-turbo-0125';
-}
-
-// Helper function to get max_tokens parameter based on model
-function getMaxTokensForModel(model) {
-  // More conservative token limits to avoid errors
-  if (model.includes('gpt-4-turbo')) {
-    return 4000; // GPT-4 Turbo models
-  } else if (model.includes('gpt-4')) {
-    return 3500; // Regular GPT-4 models
-  }
-  return 3500; // Default for GPT-3.5 models
-}
-
-// Helper function to count bookmarks in a tree structure
-function countBookmarksInTree(node) {
-  if (!node) return 0;
-  
-  if (node.type === 'bookmark') {
-    return 1;
-  }
-  
-  if (node.children) {
-    return node.children.reduce((sum, child) => sum + countBookmarksInTree(child), 0);
-  }
-  
-  return 0;
 } 

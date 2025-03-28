@@ -45,7 +45,14 @@ const BookmarkTree = ({ bookmark, level = 0 }) => {
     <div className="bookmark-item" style={indentStyle}>
       <span className="bookmark-icon">🔖</span>
       <span className="bookmark-title" title={bookmark.url}>
-        {bookmark.title}
+        <a 
+          href={bookmark.url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="text-blue-600 hover:underline truncate"
+        >
+          {bookmark.title}
+        </a>
       </span>
     </div>
   );
