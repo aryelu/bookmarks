@@ -9,10 +9,21 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
     // Prepare bookmarks data for OpenAI
     const bookmarksData = prepareBookmarksForAPI(bookmarks);
     
-    // Construct the prompt based on organization type
-    const prompt = constructPrompt(bookmarksData, organizationType);
+    // Limit the number of bookmarks if there are too many (to prevent truncated responses)
+    const maxBookmarks = 100; // Set a reasonable limit
+    let limitedBookmarks = bookmarksData;
+    let usedLimitedSet = false;
     
-    // Create the request body
+    if (bookmarksData.length > maxBookmarks) {
+      console.log(`Limiting bookmarks from ${bookmarksData.length} to ${maxBookmarks} to prevent truncated responses`);
+      limitedBookmarks = bookmarksData.slice(0, maxBookmarks);
+      usedLimitedSet = true;
+    }
+    
+    // Construct the prompt based on organization type
+    const prompt = constructPrompt(limitedBookmarks, organizationType);
+    
+    // Create the request body with a larger max_tokens to prevent truncation
     const requestBody = {
       model: "gpt-3.5-turbo-0125",
       messages: [
@@ -26,7 +37,8 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
         }
       ],
       temperature: 0.7,
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      max_tokens: 4000  // Request larger response size
     };
     
     // Log the full request for testing in OpenAI console
@@ -66,8 +78,42 @@ export const organizeBookmarksWithOpenAI = async (bookmarks, organizationType, a
     const data = await response.json();
     console.log("OpenAI API Response:", JSON.stringify(data, null, 2));
     
+    // Check if content is too long (indicating potential truncation)
+    const responseContent = data.choices[0].message.content;
+    console.log(`Response content length: ${responseContent.length} characters`);
+    
     // Parse the AI response into a bookmark structure
-    return parseOpenAIResponse(data.choices[0].message.content);
+    let parsedResponse;
+    try {
+      parsedResponse = parseOpenAIResponse(responseContent);
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response:', parseError);
+      
+      // If we used a limited set and parsing failed, it might be due to truncation
+      if (usedLimitedSet) {
+        throw new Error('The bookmark collection is too large for the AI to process completely. Try using a smaller collection or use the alphabetical organization option instead.');
+      }
+      
+      throw parseError;
+    }
+    
+    // If we used a limited set, add a note about it
+    if (usedLimitedSet && parsedResponse) {
+      // Add a note folder about the limitation
+      const noteFolder = {
+        type: 'folder',
+        title: 'Note: Limited Bookmarks',
+        children: [{
+          type: 'bookmark',
+          title: `Only ${maxBookmarks} of ${bookmarksData.length} bookmarks were organized due to size constraints`,
+          url: 'https://example.com/note'
+        }]
+      };
+      
+      parsedResponse.children.unshift(noteFolder);
+    }
+    
+    return parsedResponse;
   } catch (error) {
     console.error('Error calling OpenAI:', error);
     
@@ -241,11 +287,11 @@ Example categories could include:
 - Entertainment & Media
 - Personal & Admin
 
-You may use subfolders if they improve clarity (e.g. “Art & Creativity > Videos” or “Crypto & Blockchain > NFT”).
+You may use subfolders if they improve clarity (e.g. "Art & Creativity > Videos" or "Crypto & Blockchain > NFT").
 
-Do not preserve original folder names like “Refs” or “Projects” unless they directly match a general-purpose category.
+Do not preserve original folder names like "Refs" or "Projects" unless they directly match a general-purpose category.
 
-Keep all bookmark titles and URLs intact, and don’t skip any.`;
+Keep all bookmark titles and URLs intact, and don't skip any.`;
       break;
 
     case 'alphabetical':
@@ -289,7 +335,7 @@ Please provide a JSON response with the following structure:
 
 Guidelines:
 1. Keep all original bookmark titles and URLs intact.
-2. Don’t lose any bookmarks.
+2. Don't lose any bookmarks.
 3. Use descriptive category names.
 4. Create only 5–15 top-level folders unless subfolders improve organization.
 5. Group by purpose and content — not original path.`;

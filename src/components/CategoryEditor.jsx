@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useBookmarkContext } from '../context/BookmarkContext';
+import { useState, useEffect, useContext } from 'react';
+import { BookmarkContext } from '../context/BookmarkContext';
 
 const CategoryEditor = () => {
   const { 
@@ -7,7 +7,7 @@ const CategoryEditor = () => {
     setOrganizedBookmarks,
     moveToNextStep, 
     setStatusMessage
-  } = useBookmarkContext();
+  } = useContext(BookmarkContext);
   
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');

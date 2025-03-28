@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { useBookmarkContext } from '../context/BookmarkContext';
+import { useState, useContext } from 'react';
+import { BookmarkContext } from '../context/BookmarkContext';
 import { exportBookmarks, getCurrentBookmarks } from '../services/chromeAPI';
 
 const ImportExport = () => {
   const [loadingCurrent, setLoadingCurrent] = useState(false);
   const { 
     setParsedBookmarks, 
+    setOriginalBookmarks,
     moveToNextStep, 
     setStatusMessage,
     setIsUsingCurrentBookmarks
-  } = useBookmarkContext();
+  } = useContext(BookmarkContext);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -19,20 +20,21 @@ const ImportExport = () => {
     reader.onload = (e) => {
       try {
         const parsed = JSON.parse(e.target.result);
+        setOriginalBookmarks(parsed);
         setParsedBookmarks(parsed);
         
         // Count bookmarks to show in status
         const count = countBookmarks(parsed);
-        setStatusMessage(`Imported ${count} bookmarks successfully`);
+        setStatusMessage('success', `Imported ${count} bookmarks successfully`);
         setIsUsingCurrentBookmarks(false);
         moveToNextStep();
       } catch (error) {
-        setStatusMessage(`Failed to parse bookmarks: ${error.message}`, true);
+        setStatusMessage('error', `Failed to parse bookmarks: ${error.message}`);
       }
     };
     
     reader.onerror = () => {
-      setStatusMessage('Error reading file', true);
+      setStatusMessage('error', 'Error reading file');
     };
     
     reader.readAsText(file);
@@ -42,28 +44,29 @@ const ImportExport = () => {
     try {
       const success = await exportBookmarks();
       if (success) {
-        setStatusMessage('Bookmarks exported successfully! Check your downloads folder.');
+        setStatusMessage('success', 'Bookmarks exported successfully! Check your downloads folder.');
       }
     } catch (error) {
-      setStatusMessage(`Export failed: ${error.message}`, true);
+      setStatusMessage('error', `Export failed: ${error.message}`);
     }
   };
   
   const handleCurrentBookmarks = async () => {
     setLoadingCurrent(true);
-    setStatusMessage('Loading your current Chrome bookmarks...');
+    setStatusMessage('info', 'Loading your current Chrome bookmarks...');
     
     try {
       const bookmarks = await getCurrentBookmarks();
+      setOriginalBookmarks(bookmarks);
       setParsedBookmarks(bookmarks);
       
       // Count bookmarks to show in status
       const count = countBookmarks(bookmarks);
-      setStatusMessage(`Loaded ${count} bookmarks from Chrome successfully`);
+      setStatusMessage('success', `Loaded ${count} bookmarks from Chrome successfully`);
       setIsUsingCurrentBookmarks(true);
       moveToNextStep();
     } catch (error) {
-      setStatusMessage(`Failed to load Chrome bookmarks: ${error.message}`, true);
+      setStatusMessage('error', `Failed to load Chrome bookmarks: ${error.message}`);
     } finally {
       setLoadingCurrent(false);
     }
@@ -71,7 +74,8 @@ const ImportExport = () => {
   
   // Helper function to count bookmarks
   const countBookmarks = (node) => {
-    if (!node.children) return 1; // It's a bookmark
+    if (!node) return 0;
+    if (!node.children) return node.url ? 1 : 0; // Count only if it has a URL
     return node.children.reduce((sum, child) => sum + countBookmarks(child), 0);
   };
 
@@ -86,7 +90,6 @@ const ImportExport = () => {
           your current bookmarks and allow you to organize them with AI.
         </p>
         <button 
-          className="btn" 
           onClick={handleCurrentBookmarks}
           disabled={loadingCurrent}
         >
@@ -115,7 +118,7 @@ const ImportExport = () => {
           It's recommended to backup your bookmarks before making any changes.
           This will download a JSON file of your current Chrome bookmarks.
         </p>
-        <button className="btn" onClick={handleExport}>
+        <button onClick={handleExport}>
           Export Chrome Bookmarks
         </button>
       </div>

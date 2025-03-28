@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useBookmarkContext } from '../context/BookmarkContext';
+import { useState, useContext } from 'react';
+import { BookmarkContext } from '../context/BookmarkContext';
 import { applyBookmarksToChrome } from '../services/chromeAPI';
 
 const Preview = () => {
@@ -7,7 +7,7 @@ const Preview = () => {
     organizedBookmarks, 
     setStatusMessage, 
     isUsingCurrentBookmarks
-  } = useBookmarkContext();
+  } = useContext(BookmarkContext);
   const [applying, setApplying] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState({});
 
@@ -24,13 +24,13 @@ const Preview = () => {
 
   const handleApply = async () => {
     setApplying(true);
-    setStatusMessage('Applying organized bookmarks to Chrome...');
+    setStatusMessage('info', 'Applying organized bookmarks to Chrome...');
     
     try {
       await applyBookmarksToChrome(organizedBookmarks);
-      setStatusMessage('Bookmarks successfully organized in Chrome!');
+      setStatusMessage('success', 'Bookmarks successfully organized in Chrome!');
     } catch (error) {
-      setStatusMessage(`Failed to apply bookmarks: ${error.message}`, true);
+      setStatusMessage('error', `Failed to apply bookmarks: ${error.message}`);
     } finally {
       setApplying(false);
     }
