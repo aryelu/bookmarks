@@ -1,0 +1,145 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 
+    'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: #f5f5f7;
+  color: #333;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5 {
+  margin-bottom: 0.5rem;
+}
+
+p {
+  margin-bottom: 1rem;
+}
+
+a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.btn {
+  background-color: #4b84f5;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn:hover {
+  background-color: #3b74e5;
+}
+
+.btn:disabled {
+  background-color: #a3c2f8;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: #f1f3f4;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+}
+
+.btn-secondary:hover {
+  background-color: #e8eaed;
+}
+
+input[type="text"],
+input[type="password"] {
+  padding: 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: #4b84f5;
+  outline: none;
+}
+
+/* Category Editor Styles */
+.category-editor .folder-item {
+  transition: background-color 0.2s;
+}
+
+.category-editor .folder-item:hover {
+  background-color: #f5f5f5;
+}
+
+.category-editor .bookmark-item {
+  transition: background-color 0.2s;
+}
+
+.category-editor .bookmark-item:hover {
+  background-color: #f5f5f5;
+}
+
+/* Preview Styles */
+.preview-container .folder-item {
+  transition: background-color 0.2s;
+}
+
+.preview-container .folder-item:hover {
+  background-color: #f5f5f5;
+}
+
+.preview-container .bookmark-item {
+  transition: background-color 0.2s;
+}
+
+.preview-container .bookmark-item:hover {
+  background-color: #f5f5f5;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.step-content {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Step indicator animation */
+.progress-line div {
+  transition: width 0.5s ease-in-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .app-container {
+    padding: 10px;
+  }
+  
+  .step-content {
+    padding: 15px;
+  }
+  
+  .step-title {
+    font-size: 10px !important;
+  }
+  
+  .step-number {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 12px;
+  }
+}
