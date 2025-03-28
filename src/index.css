@@ -1,3 +1,6 @@
+@import "tailwindcss/preflight.css";
+@tailwind utilities;
+
 * {
   box-sizing: border-box;
   margin: 0;

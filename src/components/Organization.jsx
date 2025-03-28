@@ -36,6 +36,10 @@ const Organization = () => {
     
     setLoading(true);
     setStatusMessage('info', 'Processing your bookmarks. This may take a minute...');
+    
+    // Count total bookmarks before processing
+    const originalBookmarkCount = countBookmarks(parsedBookmarks);
+    console.log(`Starting organization of ${originalBookmarkCount} bookmarks using ${model}`);
 
     try {
       let organizedData;
@@ -43,20 +47,25 @@ const Organization = () => {
         // Count total bookmarks to determine processing method
         const bookmarkCount = countBookmarks(parsedBookmarks);
         
-        if (bookmarkCount > 100 && useBatchProcessing) {
+        if (bookmarkCount > 150 && useBatchProcessing) {
           // For large collections, use batch processing
-          setStatusMessage('info', `Processing ${bookmarkCount} bookmarks in batches. This may take several minutes...`);
+          setStatusMessage('info', `Processing ${bookmarkCount} bookmarks in batches using ${model}. This will preserve hierarchy where possible.`);
           organizedData = await processLargeBookmarkCollection(
             parsedBookmarks,
             organizationType,
-            apiKey
+            apiKey,
+            model,
+            temperature
           );
         } else {
           // For smaller collections or if batch processing is disabled
+          setStatusMessage('info', `Processing ${bookmarkCount} bookmarks using ${model}...`);
           organizedData = await organizeBookmarksWithOpenAI(
             parsedBookmarks,
             organizationType,
-            apiKey
+            apiKey,
+            model,
+            temperature
           );
         }
       } catch (apiError) {
@@ -64,7 +73,7 @@ const Organization = () => {
         
         // Check if it's a JSON parsing error
         if (apiError.message && apiError.message.includes('Failed to parse AI response')) {
-          setStatusMessage('error', 'Failed to parse the AI response. This is usually due to a malformed response from OpenAI. Try enabling batch processing for large bookmark collections.');
+          setStatusMessage('error', 'Failed to parse the AI response. This could be due to the complexity of your bookmarks. Try enabling batch processing or using a more capable model like GPT-4.');
           
           // Create a default fallback organization if the parsing failed
           organizedData = createFallbackOrganization(parsedBookmarks);
@@ -75,8 +84,18 @@ const Organization = () => {
         }
       }
       
+      // Verify that all bookmarks were included in the response
+      const organizedBookmarkCount = countBookmarks(organizedData);
+      console.log(`Organized bookmark count: ${organizedBookmarkCount} of ${originalBookmarkCount}`);
+      
+      if (organizedBookmarkCount < originalBookmarkCount * 0.95) {
+        // If more than 5% of bookmarks are missing, add a warning
+        setStatusMessage('warning', `Warning: Only ${organizedBookmarkCount} of ${originalBookmarkCount} bookmarks were organized. Some bookmarks may be missing. Consider trying again with a different model or batch processing setting.`);
+      } else {
+        setStatusMessage('success', 'Bookmarks organized successfully!');
+      }
+      
       setOrganizedBookmarks(organizedData);
-      setStatusMessage('success', 'Bookmarks organized successfully!');
       moveToNextStep();
     } catch (error) {
       console.error('Error organizing bookmarks:', error);
@@ -155,9 +174,9 @@ const Organization = () => {
   };
 
   return (
-    <div className="organization-container">
-      <div className="api-key-section">
-        <label htmlFor="apiKey">
+    <div className="max-w-3xl mx-auto p-6 bg-white rounded-lg shadow-md">
+      <div className="mb-6">
+        <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
           OpenAI API Key:
           <input
             type="password"
@@ -165,49 +184,64 @@ const Organization = () => {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </label>
-        <p className="api-key-note">
+        <p className="mt-2 text-sm text-gray-500">
           Your API key is stored locally in your browser and never sent to our servers.
         </p>
       </div>
 
-      <div className="organization-options">
-        <h3>Organization Options</h3>
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium text-gray-900">Organization Options</h3>
         
-        <div className="option-group">
-          <label htmlFor="organizationType">
+        <div className="space-y-2">
+          <label htmlFor="organizationType" className="block text-sm font-medium text-gray-700">
             Organization Type:
             <select
               id="organizationType"
               value={organizationType}
               onChange={(e) => setOrganizationType(e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
               <option value="category">Category-based (recommended)</option>
               <option value="alphabetical">Alphabetical</option>
-              <option value="domain">Domain-based</option>
+              <option value="domain">Domain-based (group by website)</option>
             </select>
           </label>
+          <div className="mt-3 text-sm text-gray-600">
+            Choose how you want your bookmarks organized:
+            <ul className="mt-2 list-disc pl-5 space-y-1">
+              <li><span className="font-semibold">Category-based:</span> Organizes by content and purpose (e.g., "Development", "Finance")</li>
+              <li><span className="font-semibold">Alphabetical:</span> Arranges bookmarks by first letter of title</li>
+              <li><span className="font-semibold">Domain-based:</span> Groups by website/service (e.g., "Google", "GitHub")</li>
+            </ul>
+          </div>
         </div>
 
-        <div className="option-group">
-          <label htmlFor="model">
+        <div className="space-y-2">
+          <label htmlFor="model" className="block text-sm font-medium text-gray-700">
             Model:
             <select
               id="model"
               value={model}
               onChange={(e) => setModel(e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
-              <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo (16k context)</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (8k context)</option>
-              <option value="gpt-4">GPT-4 (8k context)</option>
-              <option value="gpt-4-turbo">GPT-4 Turbo (128k context)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 (Basic, Faster)</option>
+              <option value="gpt-3.5-turbo-16k">GPT-3.5 Turbo 16k (Recommended, Good Balance)</option>
+              <option value="gpt-4">GPT-4 (High Quality, Slower, More Expensive)</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo (Latest, Best Quality, Most Expensive)</option>
             </select>
           </label>
+          <p className="mt-2 text-sm text-gray-600">
+            Advanced models like GPT-4 provide better organization quality but cost more tokens. 
+            GPT-4 models may require specific API access rights in your OpenAI account.
+          </p>
         </div>
 
-        <div className="option-group">
-          <label htmlFor="temperature">
+        <div className="space-y-2">
+          <label htmlFor="temperature" className="block text-sm font-medium text-gray-700">
             Temperature: {temperature}
             <input
               type="range"
@@ -217,32 +251,35 @@ const Organization = () => {
               step="0.1"
               value={temperature}
               onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              className="mt-2 block w-full"
             />
           </label>
-          <p className="option-description">
+          <p className="mt-2 text-sm text-gray-600">
             Lower values (0) make output more focused and deterministic. Higher values (1) make output more creative and varied.
           </p>
         </div>
         
-        <div className="option-group">
-          <label className="checkbox-label">
+        <div className="space-y-2">
+          <label className="flex items-center text-sm font-medium text-gray-700">
             <input
               type="checkbox"
               checked={useBatchProcessing}
               onChange={(e) => setUseBatchProcessing(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 mr-2"
             />
             Use batch processing for large collections
           </label>
-          <p className="option-description">
+          <p className="mt-2 text-sm text-gray-600">
             Processes large bookmark collections in smaller batches. Recommended for collections with more than 100 bookmarks.
           </p>
         </div>
       </div>
 
-      <div className="action-buttons">
+      <div className="mt-8">
         <button
           onClick={handleOrganize}
           disabled={loading || !apiKey || !parsedBookmarks}
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
         >
           {loading ? 'Processing...' : 'Organize Bookmarks'}
         </button>
