@@ -44,6 +44,16 @@ export const BookmarkProvider = ({ children }) => {
   const moveToStep = (step) => {
     setCurrentStep(step);
   };
+
+  const resetToStart = () => {
+    // Reset all state to initial values
+    setOriginalBookmarks(null);
+    setParsedBookmarks(null);
+    setOrganizedBookmarks(null);
+    setCurrentStep(1);
+    setStatus({ message: '', type: '' });
+    setIsUsingCurrentBookmarks(false);
+  };
   
   const value = {
     originalBookmarks,
@@ -59,7 +69,8 @@ export const BookmarkProvider = ({ children }) => {
     setStatusMessage,
     clearStatusMessage,
     isUsingCurrentBookmarks,
-    setIsUsingCurrentBookmarks
+    setIsUsingCurrentBookmarks,
+    resetToStart
   };
   
   return (

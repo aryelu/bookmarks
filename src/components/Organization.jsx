@@ -7,7 +7,8 @@ const Organization = () => {
     parsedBookmarks, 
     setOrganizedBookmarks, 
     moveToNextStep, 
-    setStatusMessage 
+    setStatusMessage,
+    resetToStart 
   } = useContext(BookmarkContext);
   
   const [loading, setLoading] = useState(false);
@@ -19,6 +20,12 @@ const Organization = () => {
   const [customInstructions, setCustomInstructions] = useState(
     'Organize these bookmarks into logical categories. Create folder hierarchy where appropriate. Group similar sites together.'
   );
+
+  const handleReset = () => {
+    setLoading(false);
+    setStatusMessage('info', 'Reset to start. You can try organizing again with different settings.');
+    resetToStart();
+  };
 
   const handleOrganize = async () => {
     if (!apiKey) {
@@ -90,7 +97,7 @@ const Organization = () => {
       
       if (organizedBookmarkCount < originalBookmarkCount * 0.95) {
         // If more than 5% of bookmarks are missing, add a warning
-        setStatusMessage('warning', `Warning: Only ${organizedBookmarkCount} of ${originalBookmarkCount} bookmarks were organized. Some bookmarks may be missing. Consider trying again with a different model or batch processing setting.`);
+        setStatusMessage('warning', `Warning: Only ${organizedBookmarkCount} of ${originalBookmarkCount} bookmarks were organized. Some bookmarks may be missing. Consider trying again with different settings.`);
       } else {
         setStatusMessage('success', 'Bookmarks organized successfully!');
       }
@@ -99,7 +106,19 @@ const Organization = () => {
       moveToNextStep();
     } catch (error) {
       console.error('Error organizing bookmarks:', error);
-      setStatusMessage('error', `Error: ${error.message || 'Failed to organize bookmarks'}`);
+      
+      // Handle specific error types
+      if (error.message.includes('context length') || error.message.includes('token')) {
+        setStatusMessage('error', 'Your bookmark collection is too large for the API. Try enabling batch processing or using a model with larger context window.');
+      } else if (error.message.includes('API key') || error.message.includes('quota')) {
+        setStatusMessage('error', 'API key error. Please check your OpenAI API key and quota.');
+      } else if (error.message.includes('Rate limit')) {
+        setStatusMessage('error', 'Rate limit exceeded. Please wait a few minutes before trying again.');
+      } else {
+        setStatusMessage('error', `Error: ${error.message || 'Failed to organize bookmarks'}`);
+      }
+      
+      // Don't move to next step on error
     } finally {
       setLoading(false);
     }
@@ -275,13 +294,21 @@ const Organization = () => {
         </div>
       </div>
 
-      <div className="mt-8">
+      <div className="mt-8 space-y-4">
         <button
           onClick={handleOrganize}
           disabled={loading || !apiKey || !parsedBookmarks}
           className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed"
         >
           {loading ? 'Processing...' : 'Organize Bookmarks'}
+        </button>
+        
+        <button
+          onClick={handleReset}
+          disabled={loading}
+          className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        >
+          Reset & Start Over
         </button>
       </div>
     </div>

@@ -259,7 +259,7 @@ When analyzing each bookmark:
 
 Organize bookmarks into meaningful, broad-purpose categories (with subfolders if needed). Group similar sites together, even if they came from different paths.
 
-Example categories could include:
+Example categories should be broad-purpose and could include but not limited to:
 - Productivity & Planning
 - Finance & Investing
 - Learning & Study
@@ -512,9 +512,9 @@ function getMaxTokensForModel(model) {
   if (model.includes('gpt-4')) {
     return 4000; // Larger token limit for GPT-4 to prevent truncation
   } else if (model.includes('16k')) {
-    return 3000; // GPT-3.5-16k with good limit
+    return 3000; // GPT-3.5-16k with conservative limit
   } else {
-    return 2000; // Default limit for other models
+    return 2000; // GPT-3.5 with conservative limit
   }
 }
 
