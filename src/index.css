@@ -1,125 +1,194 @@
-@import "tailwindcss/preflight.css";
+@import "tailwindcss/preflight";
 @tailwind utilities;
 
-/* Full page styling */
-body {
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 
-    'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #f5f5f7;
-  color: #333;
-  line-height: 1.5;
-  min-height: 100vh;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 
+      'Open Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5 {
+    margin-bottom: 0.5rem;
+    color: hsl(var(--foreground));
+  }
+
+  p {
+    margin-bottom: 1rem;
+    color: hsl(var(--foreground));
+  }
+
+  a {
+    color: hsl(var(--primary));
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+    opacity: 0.9;
+  }
+}
+
+@layer utilities {
+  .bg-background {
+    background-color: hsl(var(--background));
+  }
+
+  .text-foreground {
+    color: hsl(var(--foreground));
+  }
+
+  .bg-card {
+    background-color: hsl(var(--card));
+  }
+
+  .text-card-foreground {
+    color: hsl(var(--card-foreground));
+  }
+
+  .bg-popover {
+    background-color: hsl(var(--popover));
+  }
+
+  .text-popover-foreground {
+    color: hsl(var(--popover-foreground));
+  }
+
+  .bg-primary {
+    background-color: hsl(var(--primary));
+  }
+
+  .text-primary-foreground {
+    color: hsl(var(--primary-foreground));
+  }
+
+  .bg-secondary {
+    background-color: hsl(var(--secondary));
+  }
+
+  .text-secondary-foreground {
+    color: hsl(var(--secondary-foreground));
+  }
+
+  .bg-muted {
+    background-color: hsl(var(--muted));
+  }
+
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .border-border {
+    border-color: hsl(var(--border));
+  }
 }
 
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-h1, h2, h3, h4, h5 {
-  margin-bottom: 0.5rem;
-}
-
-p {
-  margin-bottom: 1rem;
-}
-
-a {
-  color: #0066cc;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
+  padding: 1.25rem;
 }
 
 .btn {
-  background-color: #4b84f5;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: background-color 0.2s;
 }
 
 .btn:hover {
-  background-color: #3b74e5;
+  opacity: 0.9;
 }
 
 .btn:disabled {
-  background-color: #a3c2f8;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: #f1f3f4;
-  color: #3c4043;
-  border: 1px solid #dadce0;
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--input));
 }
 
 .btn-secondary:hover {
-  background-color: #e8eaed;
+  opacity: 0.8;
 }
 
 input[type="text"],
 input[type="password"] {
-  padding: 8px;
-  border: 1px solid #dadce0;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 0.5rem;
+  border: 1px solid hsl(var(--input));
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
 }
 
 input[type="text"]:focus,
 input[type="password"]:focus {
-  border-color: #4b84f5;
+  border-color: hsl(var(--primary));
   outline: none;
-}
-
-/* Category Editor Styles */
-.category-editor .folder-item {
-  transition: background-color 0.2s;
-}
-
-.category-editor .folder-item:hover {
-  background-color: #f5f5f5;
-}
-
-.category-editor .bookmark-item {
-  transition: background-color 0.2s;
-}
-
-.category-editor .bookmark-item:hover {
-  background-color: #f5f5f5;
-}
-
-/* Preview Styles */
-.preview-container .folder-item {
-  transition: background-color 0.2s;
-}
-
-.preview-container .folder-item:hover {
-  background-color: #f5f5f5;
-}
-
-.preview-container .bookmark-item {
-  transition: background-color 0.2s;
-}
-
-.preview-container .bookmark-item:hover {
-  background-color: #f5f5f5;
 }
 
 /* Animations */
@@ -132,28 +201,43 @@ input[type="password"]:focus {
   animation: fadeIn 0.3s ease-in-out;
 }
 
-/* Step indicator animation */
-.progress-line div {
-  transition: width 0.5s ease-in-out;
-}
-
 /* Responsive adjustments */
 @media (max-width: 600px) {
   .app-container {
-    padding: 10px;
+    padding: 0.625rem;
   }
   
   .step-content {
-    padding: 15px;
+    padding: 1rem;
   }
   
   .step-title {
-    font-size: 10px !important;
+    font-size: 0.75rem !important;
   }
   
   .step-number {
-    width: 24px !important;
-    height: 24px !important;
-    font-size: 12px;
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.75rem;
   }
+}
+
+/* Category Editor Styles */
+.category-editor .folder-item,
+.category-editor .bookmark-item,
+.preview-container .folder-item,
+.preview-container .bookmark-item {
+  transition: background-color 0.2s;
+}
+
+.category-editor .folder-item:hover,
+.category-editor .bookmark-item:hover,
+.preview-container .folder-item:hover,
+.preview-container .bookmark-item:hover {
+  background-color: hsl(var(--muted));
+}
+
+/* Step indicator animation */
+.progress-line div {
+  transition: width 0.5s ease-in-out;
 }
