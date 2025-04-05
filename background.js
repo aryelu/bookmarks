@@ -1,8 +1,17 @@
 // Listen for extension icon click
 chrome.action.onClicked.addListener(() => {
-  // Open the extension in a new tab
-  chrome.tabs.create({
-    url: chrome.runtime.getURL('index.html')
+  // Check if the extension is already open in any tab
+  chrome.tabs.query({ url: chrome.runtime.getURL('index.html') }, (tabs) => {
+    if (tabs.length > 0) {
+      // If found, focus the existing tab
+      chrome.tabs.update(tabs[0].id, { active: true });
+      chrome.windows.update(tabs[0].windowId, { focused: true });
+    } else {
+      // If not found, open in a new tab
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('index.html')
+      });
+    }
   });
 });
 
@@ -20,14 +29,24 @@ function showNotification(title, message) {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
     title: title,
-    message: message
+    message: message,
+    priority: 0
   });
 }
 
 // Listen for notification clicks
 chrome.notifications.onClicked.addListener((notificationId) => {
-  // Open the extension in a new tab when notification is clicked
-  chrome.tabs.create({
-    url: chrome.runtime.getURL('index.html')
+  // Check if the extension is already open in any tab
+  chrome.tabs.query({ url: chrome.runtime.getURL('index.html') }, (tabs) => {
+    if (tabs.length > 0) {
+      // If found, focus the existing tab
+      chrome.tabs.update(tabs[0].id, { active: true });
+      chrome.windows.update(tabs[0].windowId, { focused: true });
+    } else {
+      // If not found, open in a new tab
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('index.html')
+      });
+    }
   });
 }); 
