@@ -15,6 +15,9 @@ A browser extension for efficient bookmark management. This extension helps you 
 
 ## Installation
 
+### API Key Requirement
+**Important:** This extension currently uses the OpenAI API and requires a valid OpenAI API key to function properly. You will need to provide your own API key during setup.
+
 ### From Store
 *(Coming soon)*
 
