@@ -2,6 +2,10 @@
 
 A browser extension for efficient bookmark management. This extension helps you organize, search, and manage your bookmarks in a more intuitive and user-friendly interface.
 
+## Disclaimer
+
+**This extension is primarily a personal tool created for personal use.** It is shared as-is without any warranty or guarantee of any kind. The author is not responsible for any data loss, damage, or other issues that may arise from using this extension. Please use it at your own risk and make sure to back up your bookmarks before using this tool.
+
 ## Features
 
 - Easily browse and search your existing bookmarks
