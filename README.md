@@ -1,12 +1,62 @@
-# React + Vite
+# Bookmarks Extension
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A browser extension for efficient bookmark management. This extension helps you organize, search, and manage your bookmarks in a more intuitive and user-friendly interface.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Easily browse and search your existing bookmarks
+- Organize bookmarks with custom tags and categories
+- Fast and responsive interface built with React
+- Modern UI using Tailwind CSS and shadcn components
 
-## Expanding the ESLint configuration
+## Installation
 
-If you are developing a production application, we recommend using TypeScript and enable type-aware lint rules. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### From Store
+*(Coming soon)*
+
+### Manual Installation
+1. Download the latest release from the [Releases](https://github.com/yourusername/bookmarks/releases) page
+2. Unzip the file
+3. In Chrome, go to `chrome://extensions/`
+4. Enable "Developer mode" in the top right
+5. Click "Load unpacked" and select the unzipped folder
+
+## Development
+
+### Prerequisites
+- Node.js >= 18.0.0
+- pnpm >= 8.0.0
+
+### Setup
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/bookmarks.git
+cd bookmarks
+
+# Install dependencies
+pnpm install
+
+# Start development server
+pnpm dev
+```
+
+### Build
+```bash
+# Build the extension
+pnpm build
+
+# The built extension will be in the dist/ directory
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Screenshots
+### Main
+![Main](./screenshots/first.png)
+*Main page*
